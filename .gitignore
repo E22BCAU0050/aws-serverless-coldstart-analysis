@@ -1,0 +1,16 @@
+# Python
+venv/
+venv311/
+__pycache__/
+*.pyc
+
+# Data files
+*.csv
+*.jsonl
+*.log
+
+# Env
+.env
+
+# Mac
+.DS_Store

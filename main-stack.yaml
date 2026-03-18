@@ -1,0 +1,1273 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Cold Start Latency Research Stack — Hybrid ML/DL Framework
+  VPC vs Non-VPC | ZIP packages (small/medium/large) | Dynamic Provisioning
+  Account: !Ref AWS::AccountId | Region: us-east-1
+
+# ─────────────────────────────────────────────
+#  PARAMETERS
+# ─────────────────────────────────────────────
+Parameters:
+  ProjectName:
+    Type: String
+    Default: coldstart-research
+  ProvisionedConcurrency:
+    Type: Number
+    Default: 2
+    Description: Initial provisioned concurrency for the provisioned function
+
+# ─────────────────────────────────────────────
+#  RESOURCES
+# ─────────────────────────────────────────────
+Resources:
+
+  # ── VPC ──────────────────────────────────────
+  ResearchVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-vpc
+        - Key: Project
+          Value: !Ref ProjectName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-igw
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref ResearchVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ResearchVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: us-east-1a
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-public-1
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ResearchVPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: us-east-1a
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ResearchVPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: us-east-1b
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-private-2
+
+  NatEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      AllocationId: !GetAtt NatEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-nat
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ResearchVPC
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref ResearchVPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PublicSubnetRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateSubnet1RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  DynamoDBVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref ResearchVPC
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for VPC Lambda functions
+      VpcId: !Ref ResearchVPC
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-lambda-sg
+
+  # ── DYNAMODB ──────────────────────────────────
+  BooksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-books
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: bookId
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: bookId
+          AttributeType: S
+        - AttributeName: genre
+          AttributeType: S
+        - AttributeName: publishedYear
+          AttributeType: N
+      GlobalSecondaryIndexes:
+        - IndexName: genre-publishedYear-index
+          KeySchema:
+            - AttributeName: genre
+              KeyType: HASH
+            - AttributeName: publishedYear
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  MetricsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-metrics
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: requestId
+          KeyType: HASH
+      AttributeDefinitions:
+        - AttributeName: requestId
+          AttributeType: S
+        - AttributeName: functionType
+          AttributeType: S
+      GlobalSecondaryIndexes:
+        - IndexName: functionType-index
+          KeySchema:
+            - AttributeName: functionType
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+
+  # ── IAM ROLE ──────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/CloudWatchLambdaInsightsExecutionRolePolicy
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:BatchWriteItem
+                  - dynamodb:BatchGetItem
+                Resource:
+                  - !GetAtt BooksTable.Arn
+                  - !Sub ${BooksTable.Arn}/index/*
+                  - !GetAtt MetricsTable.Arn
+                  - !Sub ${MetricsTable.Arn}/index/*
+        - PolicyName: CloudWatchMetrics
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+        - PolicyName: LambdaConcurrencyManagement
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:PutProvisionedConcurrencyConfig
+                  - lambda:GetProvisionedConcurrencyConfig
+                  - lambda:DeleteProvisionedConcurrencyConfig
+                  - lambda:ListProvisionedConcurrencyConfigs
+                  - lambda:GetAlias
+                Resource: '*'
+
+  # ── LOG GROUPS ────────────────────────────────
+  LogGroupNonVpc:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/coldstart-research-api-non-vpc
+      RetentionInDays: 14
+
+  LogGroupVpc:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/coldstart-research-api-vpc
+      RetentionInDays: 14
+
+  LogGroupProvisioned:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/coldstart-research-api-provisioned
+      RetentionInDays: 14
+
+  LogGroupSmallPkg:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/coldstart-research-api-small-pkg
+      RetentionInDays: 14
+
+  LogGroupLargePkg:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/coldstart-research-api-large-pkg
+      RetentionInDays: 14
+
+  LogGroupSeeder:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/coldstart-research-seeder
+      RetentionInDays: 7
+
+  LogGroupDynamicProvisioner:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/coldstart-research-dynamic-provisioner
+      RetentionInDays: 7
+
+  # ── LAMBDA FUNCTION CODE (shared inline) ──────
+  # Non-VPC baseline
+  BookApiNonVpc:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupNonVpc
+    Properties:
+      FunctionName: coldstart-research-api-non-vpc
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Description: "RESEARCH: Non-VPC baseline | package_size=small | dep_count=3"
+      Layers:
+        - arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:38
+      Environment:
+        Variables:
+          FUNCTION_TYPE: non-vpc
+          BOOKS_TABLE: !Ref BooksTable
+          METRICS_TABLE: !Ref MetricsTable
+          PACKAGE_SIZE_KB: "48"
+          DEP_COUNT: "3"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ColdStartVariant
+          Value: non-vpc
+      Code:
+        ZipFile: |
+          import json, os, time, uuid, boto3
+          from datetime import datetime, timezone
+          from decimal import Decimal
+          import boto3.dynamodb.conditions as C
+
+          dynamodb    = boto3.resource('dynamodb')
+          books_tbl   = dynamodb.Table(os.environ['BOOKS_TABLE'])
+          metrics_tbl = dynamodb.Table(os.environ['METRICS_TABLE'])
+          FTYPE       = os.environ.get('FUNCTION_TYPE', 'unknown')
+          PKG_KB      = int(os.environ.get('PACKAGE_SIZE_KB', 48))
+          DEP_COUNT   = int(os.environ.get('DEP_COUNT', 3))
+          COLD        = True
+
+          class Dec(json.JSONEncoder):
+              def default(self, o):
+                  return float(o) if isinstance(o, Decimal) else super().default(o)
+
+          def save_metric(req_id, path, method, ms, cold, init_ms=None):
+              try:
+                  item = {
+                      'requestId':    req_id,
+                      'functionType': FTYPE,
+                      'path': path,   'method': method,
+                      'durationMs':   Decimal(str(round(ms, 2))),
+                      'isColdStart':  cold,
+                      'memoryMB':     int(os.environ.get('AWS_LAMBDA_FUNCTION_MEMORY_SIZE', 128)),
+                      'packageSizeKb': PKG_KB,
+                      'depCount':     DEP_COUNT,
+                      'timestamp':    datetime.now(timezone.utc).isoformat(),
+                      'ttl':          int(time.time()) + 2592000
+                  }
+                  if init_ms is not None:
+                      item['initDurationMs'] = Decimal(str(round(init_ms, 2)))
+                  metrics_tbl.put_item(Item=item)
+              except Exception as e:
+                  print(f'[metric_err] {e}')
+
+          def resp(code, body, cold, ms):
+              return {
+                  'statusCode': code,
+                  'headers': {
+                      'Content-Type':    'application/json',
+                      'X-Cold-Start':    str(cold),
+                      'X-Function-Type': FTYPE,
+                      'X-Duration-Ms':   str(round(ms, 2))
+                  },
+                  'body': json.dumps(body, cls=Dec)
+              }
+
+          def handler(event, context):
+              global COLD
+              t0   = time.time()
+              cold = COLD
+              COLD = False
+              path = event.get('path', '/')
+              meth = event.get('httpMethod', 'GET')
+              pp   = event.get('pathParameters') or {}
+              qs   = event.get('queryStringParameters') or {}
+              body = {}
+              if event.get('body'):
+                  try: body = json.loads(event['body'])
+                  except: pass
+              try:
+                  if path == '/health':
+                      r, c = {'status':'ok','fn':FTYPE,'cold':cold}, 200
+                  elif path == '/books' and meth == 'GET':
+                      g = qs.get('genre')
+                      if g:
+                          res = books_tbl.query(IndexName='genre-publishedYear-index',
+                                                KeyConditionExpression=C.Key('genre').eq(g))
+                      else:
+                          res = books_tbl.scan(Limit=20)
+                      r, c = {'books': res['Items'], 'count': len(res['Items'])}, 200
+                  elif path == '/books' and meth == 'POST':
+                      bid  = str(uuid.uuid4())
+                      item = {**body, 'bookId': bid, 'createdAt': datetime.now(timezone.utc).isoformat()}
+                      if 'publishedYear' in item: item['publishedYear'] = int(item['publishedYear'])
+                      books_tbl.put_item(Item=item)
+                      r, c = {'bookId': bid, 'message': 'created'}, 201
+                  elif path.startswith('/books/') and meth == 'GET':
+                      bid = pp.get('bookId', path.split('/')[-1])
+                      res = books_tbl.get_item(Key={'bookId': bid})
+                      r, c = (res['Item'], 200) if 'Item' in res else ({'error':'not found'}, 404)
+                  elif path.startswith('/books/') and meth == 'PUT':
+                      bid = pp.get('bookId', path.split('/')[-1])
+                      upd = {k:v for k,v in body.items() if k != 'bookId'}
+                      if upd:
+                          expr  = 'SET ' + ', '.join(f'#k{i}=:v{i}' for i in range(len(upd)))
+                          names = {f'#k{i}':k for i,k in enumerate(upd)}
+                          vals  = {f':v{i}':v for i,v in enumerate(upd.values())}
+                          books_tbl.update_item(Key={'bookId':bid},
+                              UpdateExpression=expr,
+                              ExpressionAttributeNames=names,
+                              ExpressionAttributeValues=vals)
+                          r, c = {'message':'updated','bookId':bid}, 200
+                      else:
+                          r, c = {'error':'nothing to update'}, 400
+                  elif path.startswith('/books/') and meth == 'DELETE':
+                      bid = pp.get('bookId', path.split('/')[-1])
+                      books_tbl.delete_item(Key={'bookId': bid})
+                      r, c = {'message':'deleted'}, 200
+                  else:
+                      r, c = {'error':'not found'}, 404
+              except Exception as e:
+                  r, c = {'error': str(e)}, 500
+              ms = (time.time() - t0) * 1000
+              save_metric(context.aws_request_id, path, meth, ms, cold)
+              return resp(c, r, cold, ms)
+
+  # VPC Lambda
+  BookApiVpc:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupVpc
+    Properties:
+      FunctionName: coldstart-research-api-vpc
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Description: "RESEARCH: VPC Lambda | elevated cold start due to ENI | dep_count=3"
+      Layers:
+        - arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:38
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref LambdaSecurityGroup
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      Environment:
+        Variables:
+          FUNCTION_TYPE: vpc
+          BOOKS_TABLE: !Ref BooksTable
+          METRICS_TABLE: !Ref MetricsTable
+          PACKAGE_SIZE_KB: "48"
+          DEP_COUNT: "3"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ColdStartVariant
+          Value: vpc
+      Code:
+        ZipFile: |
+          import json, os, time, uuid, boto3
+          from datetime import datetime, timezone
+          from decimal import Decimal
+          import boto3.dynamodb.conditions as C
+
+          dynamodb    = boto3.resource('dynamodb')
+          books_tbl   = dynamodb.Table(os.environ['BOOKS_TABLE'])
+          metrics_tbl = dynamodb.Table(os.environ['METRICS_TABLE'])
+          FTYPE       = os.environ.get('FUNCTION_TYPE', 'unknown')
+          PKG_KB      = int(os.environ.get('PACKAGE_SIZE_KB', 48))
+          DEP_COUNT   = int(os.environ.get('DEP_COUNT', 3))
+          COLD        = True
+
+          class Dec(json.JSONEncoder):
+              def default(self, o):
+                  return float(o) if isinstance(o, Decimal) else super().default(o)
+
+          def save_metric(req_id, path, method, ms, cold):
+              try:
+                  metrics_tbl.put_item(Item={
+                      'requestId':    req_id,
+                      'functionType': FTYPE,
+                      'path': path,   'method': method,
+                      'durationMs':   Decimal(str(round(ms, 2))),
+                      'isColdStart':  cold,
+                      'memoryMB':     int(os.environ.get('AWS_LAMBDA_FUNCTION_MEMORY_SIZE', 128)),
+                      'packageSizeKb': PKG_KB,
+                      'depCount':     DEP_COUNT,
+                      'timestamp':    datetime.now(timezone.utc).isoformat(),
+                      'ttl':          int(time.time()) + 2592000
+                  })
+              except Exception as e:
+                  print(f'[metric_err] {e}')
+
+          def resp(code, body, cold, ms):
+              return {
+                  'statusCode': code,
+                  'headers': {'Content-Type':'application/json','X-Cold-Start':str(cold),
+                              'X-Function-Type':FTYPE,'X-Duration-Ms':str(round(ms,2))},
+                  'body': json.dumps(body, cls=Dec)
+              }
+
+          def handler(event, context):
+              global COLD
+              t0 = time.time(); cold = COLD; COLD = False
+              path = event.get('path', '/'); meth = event.get('httpMethod', 'GET')
+              pp = event.get('pathParameters') or {}
+              qs = event.get('queryStringParameters') or {}
+              body = {}
+              if event.get('body'):
+                  try: body = json.loads(event['body'])
+                  except: pass
+              try:
+                  if path == '/health':
+                      r, c = {'status':'ok','fn':FTYPE,'cold':cold}, 200
+                  elif path == '/books' and meth == 'GET':
+                      g = qs.get('genre')
+                      if g:
+                          res = books_tbl.query(IndexName='genre-publishedYear-index',
+                                                KeyConditionExpression=C.Key('genre').eq(g))
+                      else:
+                          res = books_tbl.scan(Limit=20)
+                      r, c = {'books': res['Items'], 'count': len(res['Items'])}, 200
+                  elif path == '/books' and meth == 'POST':
+                      bid  = str(uuid.uuid4())
+                      item = {**body, 'bookId': bid, 'createdAt': datetime.now(timezone.utc).isoformat()}
+                      if 'publishedYear' in item: item['publishedYear'] = int(item['publishedYear'])
+                      books_tbl.put_item(Item=item)
+                      r, c = {'bookId': bid, 'message': 'created'}, 201
+                  elif path.startswith('/books/') and meth == 'GET':
+                      bid = pp.get('bookId', path.split('/')[-1])
+                      res = books_tbl.get_item(Key={'bookId': bid})
+                      r, c = (res['Item'], 200) if 'Item' in res else ({'error':'not found'}, 404)
+                  elif path.startswith('/books/') and meth == 'DELETE':
+                      bid = pp.get('bookId', path.split('/')[-1])
+                      books_tbl.delete_item(Key={'bookId': bid})
+                      r, c = {'message':'deleted'}, 200
+                  else:
+                      r, c = {'error':'not found'}, 404
+              except Exception as e:
+                  r, c = {'error': str(e)}, 500
+              ms = (time.time() - t0) * 1000
+              save_metric(context.aws_request_id, path, meth, ms, cold)
+              return resp(c, r, cold, ms)
+
+  # Provisioned Concurrency Lambda
+  BookApiProvisioned:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupProvisioned
+    Properties:
+      FunctionName: coldstart-research-api-provisioned
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Description: "RESEARCH: Provisioned Concurrency | near-zero cold start control"
+      Layers:
+        - arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:38
+      Environment:
+        Variables:
+          FUNCTION_TYPE: provisioned
+          BOOKS_TABLE: !Ref BooksTable
+          METRICS_TABLE: !Ref MetricsTable
+          PACKAGE_SIZE_KB: "48"
+          DEP_COUNT: "3"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ColdStartVariant
+          Value: provisioned
+      Code:
+        ZipFile: |
+          import json, os, time, uuid, boto3
+          from datetime import datetime, timezone
+          from decimal import Decimal
+          import boto3.dynamodb.conditions as C
+
+          dynamodb    = boto3.resource('dynamodb')
+          books_tbl   = dynamodb.Table(os.environ['BOOKS_TABLE'])
+          metrics_tbl = dynamodb.Table(os.environ['METRICS_TABLE'])
+          FTYPE       = os.environ.get('FUNCTION_TYPE', 'unknown')
+          PKG_KB      = int(os.environ.get('PACKAGE_SIZE_KB', 48))
+          DEP_COUNT   = int(os.environ.get('DEP_COUNT', 3))
+          COLD        = True
+
+          class Dec(json.JSONEncoder):
+              def default(self, o):
+                  return float(o) if isinstance(o, Decimal) else super().default(o)
+
+          def save_metric(req_id, path, method, ms, cold):
+              try:
+                  metrics_tbl.put_item(Item={
+                      'requestId':    req_id,
+                      'functionType': FTYPE,
+                      'path': path,   'method': method,
+                      'durationMs':   Decimal(str(round(ms, 2))),
+                      'isColdStart':  cold,
+                      'memoryMB':     int(os.environ.get('AWS_LAMBDA_FUNCTION_MEMORY_SIZE', 128)),
+                      'packageSizeKb': PKG_KB,
+                      'depCount':     DEP_COUNT,
+                      'timestamp':    datetime.now(timezone.utc).isoformat(),
+                      'ttl':          int(time.time()) + 2592000
+                  })
+              except Exception as e:
+                  print(f'[metric_err] {e}')
+
+          def resp(code, body, cold, ms):
+              return {
+                  'statusCode': code,
+                  'headers': {'Content-Type':'application/json','X-Cold-Start':str(cold),
+                              'X-Function-Type':FTYPE,'X-Duration-Ms':str(round(ms,2))},
+                  'body': json.dumps(body, cls=Dec)
+              }
+
+          def handler(event, context):
+              global COLD
+              t0 = time.time(); cold = COLD; COLD = False
+              path = event.get('path', '/'); meth = event.get('httpMethod', 'GET')
+              pp = event.get('pathParameters') or {}
+              qs = event.get('queryStringParameters') or {}
+              body = {}
+              if event.get('body'):
+                  try: body = json.loads(event['body'])
+                  except: pass
+              try:
+                  if path == '/health':
+                      r, c = {'status':'ok','fn':FTYPE,'cold':cold}, 200
+                  elif path == '/books' and meth == 'GET':
+                      g = qs.get('genre')
+                      if g:
+                          res = books_tbl.query(IndexName='genre-publishedYear-index',
+                                                KeyConditionExpression=C.Key('genre').eq(g))
+                      else:
+                          res = books_tbl.scan(Limit=20)
+                      r, c = {'books': res['Items'], 'count': len(res['Items'])}, 200
+                  elif path == '/books' and meth == 'POST':
+                      bid  = str(uuid.uuid4())
+                      item = {**body, 'bookId': bid, 'createdAt': datetime.now(timezone.utc).isoformat()}
+                      if 'publishedYear' in item: item['publishedYear'] = int(item['publishedYear'])
+                      books_tbl.put_item(Item=item)
+                      r, c = {'bookId': bid, 'message': 'created'}, 201
+                  elif path.startswith('/books/') and meth == 'GET':
+                      bid = pp.get('bookId', path.split('/')[-1])
+                      res = books_tbl.get_item(Key={'bookId': bid})
+                      r, c = (res['Item'], 200) if 'Item' in res else ({'error':'not found'}, 404)
+                  else:
+                      r, c = {'error':'not found'}, 404
+              except Exception as e:
+                  r, c = {'error': str(e)}, 500
+              ms = (time.time() - t0) * 1000
+              save_metric(context.aws_request_id, path, meth, ms, cold)
+              return resp(c, r, cold, ms)
+
+  ProvisionedVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref BookApiProvisioned
+      Description: v1 - provisioned concurrency target
+
+  ProvisionedAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      FunctionName: !Ref BookApiProvisioned
+      FunctionVersion: !GetAtt ProvisionedVersion.Version
+      Name: live
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: !Ref ProvisionedConcurrency
+
+  # Small package variant (simulate low dep count)
+  BookApiSmallPkg:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupSmallPkg
+    Properties:
+      FunctionName: coldstart-research-api-small-pkg
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Description: "RESEARCH: Small package 32KB | dep_count=1 | package size ablation"
+      Environment:
+        Variables:
+          FUNCTION_TYPE: small-pkg
+          BOOKS_TABLE: !Ref BooksTable
+          METRICS_TABLE: !Ref MetricsTable
+          PACKAGE_SIZE_KB: "32"
+          DEP_COUNT: "1"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ColdStartVariant
+          Value: small-pkg
+      Code:
+        ZipFile: |
+          import json, os, time, boto3
+          from datetime import datetime, timezone
+          from decimal import Decimal
+
+          dynamodb    = boto3.resource('dynamodb')
+          metrics_tbl = dynamodb.Table(os.environ['METRICS_TABLE'])
+          FTYPE       = os.environ.get('FUNCTION_TYPE', 'small-pkg')
+          PKG_KB      = int(os.environ.get('PACKAGE_SIZE_KB', 32))
+          DEP_COUNT   = int(os.environ.get('DEP_COUNT', 1))
+          COLD        = True
+
+          class Dec(json.JSONEncoder):
+              def default(self, o):
+                  return float(o) if isinstance(o, Decimal) else super().default(o)
+
+          def handler(event, context):
+              global COLD
+              t0 = time.time(); cold = COLD; COLD = False
+              try:
+                  metrics_tbl.put_item(Item={
+                      'requestId':     context.aws_request_id,
+                      'functionType':  FTYPE,
+                      'path':          event.get('path', '/health'),
+                      'method':        event.get('httpMethod', 'GET'),
+                      'durationMs':    Decimal(str(round((time.time()-t0)*1000, 2))),
+                      'isColdStart':   cold,
+                      'memoryMB':      128,
+                      'packageSizeKb': PKG_KB,
+                      'depCount':      DEP_COUNT,
+                      'timestamp':     datetime.now(timezone.utc).isoformat(),
+                      'ttl':           int(time.time()) + 2592000
+                  })
+              except Exception as e:
+                  print(f'[metric_err] {e}')
+              ms = (time.time() - t0) * 1000
+              return {
+                  'statusCode': 200,
+                  'headers': {'X-Cold-Start': str(cold), 'X-Function-Type': FTYPE, 'X-Duration-Ms': str(round(ms,2))},
+                  'body': json.dumps({'status':'ok','fn':FTYPE,'cold':cold,'pkgKb':PKG_KB,'depCount':DEP_COUNT}, cls=Dec)
+              }
+
+  # Large package variant (simulate heavy dep count)
+  BookApiLargePkg:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupLargePkg
+    Properties:
+      FunctionName: coldstart-research-api-large-pkg
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Description: "RESEARCH: Large package 512KB | dep_count=15 | package size ablation"
+      Environment:
+        Variables:
+          FUNCTION_TYPE: large-pkg
+          BOOKS_TABLE: !Ref BooksTable
+          METRICS_TABLE: !Ref MetricsTable
+          PACKAGE_SIZE_KB: "512"
+          DEP_COUNT: "15"
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ColdStartVariant
+          Value: large-pkg
+      Code:
+        ZipFile: |
+          import json, os, time, boto3
+          from datetime import datetime, timezone
+          from decimal import Decimal
+
+          # Simulate large package init overhead with padding
+          _PADDING = 'x' * (400 * 1024)  # ~400KB of padding to simulate large pkg
+
+          dynamodb    = boto3.resource('dynamodb')
+          metrics_tbl = dynamodb.Table(os.environ['METRICS_TABLE'])
+          FTYPE       = os.environ.get('FUNCTION_TYPE', 'large-pkg')
+          PKG_KB      = int(os.environ.get('PACKAGE_SIZE_KB', 512))
+          DEP_COUNT   = int(os.environ.get('DEP_COUNT', 15))
+          COLD        = True
+
+          class Dec(json.JSONEncoder):
+              def default(self, o):
+                  return float(o) if isinstance(o, Decimal) else super().default(o)
+
+          def handler(event, context):
+              global COLD
+              t0 = time.time(); cold = COLD; COLD = False
+              try:
+                  metrics_tbl.put_item(Item={
+                      'requestId':     context.aws_request_id,
+                      'functionType':  FTYPE,
+                      'path':          event.get('path', '/health'),
+                      'method':        event.get('httpMethod', 'GET'),
+                      'durationMs':    Decimal(str(round((time.time()-t0)*1000, 2))),
+                      'isColdStart':   cold,
+                      'memoryMB':      128,
+                      'packageSizeKb': PKG_KB,
+                      'depCount':      DEP_COUNT,
+                      'timestamp':     datetime.now(timezone.utc).isoformat(),
+                      'ttl':           int(time.time()) + 2592000
+                  })
+              except Exception as e:
+                  print(f'[metric_err] {e}')
+              ms = (time.time() - t0) * 1000
+              return {
+                  'statusCode': 200,
+                  'headers': {'X-Cold-Start': str(cold), 'X-Function-Type': FTYPE, 'X-Duration-Ms': str(round(ms,2))},
+                  'body': json.dumps({'status':'ok','fn':FTYPE,'cold':cold,'pkgKb':PKG_KB,'depCount':DEP_COUNT}, cls=Dec)
+              }
+
+  # Dynamic Provisioner Lambda
+  DynamicProvisioner:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupDynamicProvisioner
+    Properties:
+      FunctionName: coldstart-research-dynamic-provisioner
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 256
+      Timeout: 60
+      Description: "RESEARCH: Dynamic provisioning — adjusts concurrency based on TFT traffic predictions"
+      Environment:
+        Variables:
+          PROVISIONED_FUNCTION: coldstart-research-api-provisioned
+          PROVISIONED_ALIAS: live
+          MIN_CONCURRENCY: "1"
+          MAX_CONCURRENCY: "10"
+          METRICS_TABLE: !Ref MetricsTable
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+      Code:
+        ZipFile: |
+          import json, os, boto3, math
+          from datetime import datetime, timezone
+
+          lambda_client = boto3.client('lambda')
+          dynamodb      = boto3.resource('dynamodb')
+          metrics_tbl   = dynamodb.Table(os.environ['METRICS_TABLE'])
+
+          FN_NAME   = os.environ['PROVISIONED_FUNCTION']
+          ALIAS     = os.environ['PROVISIONED_ALIAS']
+          MIN_PC    = int(os.environ.get('MIN_CONCURRENCY', 1))
+          MAX_PC    = int(os.environ.get('MAX_CONCURRENCY', 10))
+
+          def handler(event, context):
+              """
+              Called by EventBridge every 5 minutes or directly by dynamic_provisioning.py.
+              event = {
+                  "predicted_invocations": <int>,   # from TFT model
+                  "hour_of_day": <int>,
+                  "scaling_factor": <float>         # optional override
+              }
+              """
+              predicted = event.get('predicted_invocations', 0)
+              hour      = event.get('hour_of_day', datetime.now().hour)
+              factor    = event.get('scaling_factor', 1.0)
+
+              # Compute desired concurrency from prediction
+              # Rule: 1 provisioned unit per 50 predicted invocations per 5 min window
+              desired = max(MIN_PC, min(MAX_PC, math.ceil(predicted / 50 * factor)))
+
+              # Get current setting
+              try:
+                  current_cfg = lambda_client.get_provisioned_concurrency_config(
+                      FunctionName=FN_NAME, Qualifier=ALIAS)
+                  current = current_cfg['RequestedProvisionedConcurrentExecutions']
+              except Exception:
+                  current = 0
+
+              result = {
+                  'timestamp':  datetime.now(timezone.utc).isoformat(),
+                  'hour':       hour,
+                  'predicted':  predicted,
+                  'current_pc': current,
+                  'desired_pc': desired,
+                  'action':     'no_change'
+              }
+
+              # Only update if changed by more than 1 to avoid thrashing
+              if abs(desired - current) > 1:
+                  lambda_client.put_provisioned_concurrency_config(
+                      FunctionName=FN_NAME,
+                      Qualifier=ALIAS,
+                      ProvisionedConcurrentExecutions=desired
+                  )
+                  result['action'] = f'scaled {"up" if desired > current else "down"}_to_{desired}'
+                  print(f"[dynamic_provisioner] {result['action']} | predicted={predicted} | hour={hour}")
+
+              # Log to DynamoDB for comparison vs AWS autoscaling
+              try:
+                  from decimal import Decimal
+                  metrics_tbl.put_item(Item={
+                      'requestId':    f"dyn-{context.aws_request_id}",
+                      'functionType': 'dynamic-provisioner',
+                      'path':         '/provisioner',
+                      'method':       'INTERNAL',
+                      'durationMs':   Decimal('0'),
+                      'isColdStart':  False,
+                      'memoryMB':     256,
+                      'packageSizeKb': 0,
+                      'depCount':     0,
+                      'timestamp':    result['timestamp'],
+                      'provisioningAction': result['action'],
+                      'predictedInvocations': predicted,
+                      'desiredConcurrency':   desired,
+                      'ttl': __import__('time').time() + 2592000
+                  })
+              except Exception as e:
+                  print(f'[metric_err] {e}')
+
+              return result
+
+  # DB Seeder Lambda
+  DbSeeder:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroupSeeder
+    Properties:
+      FunctionName: coldstart-research-seeder
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      MemorySize: 256
+      Timeout: 120
+      Description: "Seeds DynamoDB with 20 book records for realistic API testing"
+      Environment:
+        Variables:
+          BOOKS_TABLE: !Ref BooksTable
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+      Code:
+        ZipFile: |
+          import os, uuid, boto3, random
+          from datetime import datetime, timezone
+          from decimal import Decimal
+
+          dynamodb = boto3.resource('dynamodb')
+
+          BOOKS = [
+            {"title":"Clean Code","author":"Robert C. Martin","genre":"Technology","publishedYear":2008,"isbn":"978-0132350884","price":Decimal("35.99"),"stock":150,"rating":Decimal("4.7")},
+            {"title":"The Pragmatic Programmer","author":"David Thomas","genre":"Technology","publishedYear":2019,"isbn":"978-0135957059","price":Decimal("49.95"),"stock":200,"rating":Decimal("4.8")},
+            {"title":"Designing Data-Intensive Applications","author":"Martin Kleppmann","genre":"Technology","publishedYear":2017,"isbn":"978-1449373320","price":Decimal("55.00"),"stock":80,"rating":Decimal("4.9")},
+            {"title":"System Design Interview","author":"Alex Xu","genre":"Technology","publishedYear":2020,"isbn":"979-8664653403","price":Decimal("35.99"),"stock":150,"rating":Decimal("4.7")},
+            {"title":"Introduction to Algorithms","author":"Thomas H. Cormen","genre":"Technology","publishedYear":2009,"isbn":"978-0262033848","price":Decimal("89.99"),"stock":90,"rating":Decimal("4.6")},
+            {"title":"Deep Learning","author":"Ian Goodfellow","genre":"Technology","publishedYear":2016,"isbn":"978-0262035613","price":Decimal("74.99"),"stock":70,"rating":Decimal("4.7")},
+            {"title":"The Hitchhiker's Guide to the Galaxy","author":"Douglas Adams","genre":"Science Fiction","publishedYear":1979,"isbn":"978-0345391803","price":Decimal("12.99"),"stock":300,"rating":Decimal("4.6")},
+            {"title":"Dune","author":"Frank Herbert","genre":"Science Fiction","publishedYear":1965,"isbn":"978-0441013593","price":Decimal("14.99"),"stock":250,"rating":Decimal("4.8")},
+            {"title":"Sapiens","author":"Yuval Noah Harari","genre":"Non-Fiction","publishedYear":2011,"isbn":"978-0062316097","price":Decimal("18.00"),"stock":400,"rating":Decimal("4.7")},
+            {"title":"Atomic Habits","author":"James Clear","genre":"Self-Help","publishedYear":2018,"isbn":"978-0735211292","price":Decimal("16.99"),"stock":500,"rating":Decimal("4.8")},
+            {"title":"The Psychology of Money","author":"Morgan Housel","genre":"Finance","publishedYear":2020,"isbn":"978-0857197689","price":Decimal("19.99"),"stock":320,"rating":Decimal("4.8")},
+            {"title":"Rich Dad Poor Dad","author":"Robert Kiyosaki","genre":"Finance","publishedYear":1997,"isbn":"978-1612680194","price":Decimal("14.99"),"stock":400,"rating":Decimal("4.5")},
+            {"title":"The Great Gatsby","author":"F. Scott Fitzgerald","genre":"Classic","publishedYear":1925,"isbn":"978-0743273565","price":Decimal("10.99"),"stock":120,"rating":Decimal("4.3")},
+            {"title":"1984","author":"George Orwell","genre":"Classic","publishedYear":1949,"isbn":"978-0451524935","price":Decimal("11.99"),"stock":350,"rating":Decimal("4.7")},
+            {"title":"To Kill a Mockingbird","author":"Harper Lee","genre":"Classic","publishedYear":1960,"isbn":"978-0061935466","price":Decimal("13.99"),"stock":200,"rating":Decimal("4.8")},
+            {"title":"The Alchemist","author":"Paulo Coelho","genre":"Fiction","publishedYear":1988,"isbn":"978-0062315007","price":Decimal("14.99"),"stock":280,"rating":Decimal("4.6")},
+            {"title":"Harry Potter and the Sorcerer's Stone","author":"J.K. Rowling","genre":"Fantasy","publishedYear":1997,"isbn":"978-0439708180","price":Decimal("12.99"),"stock":600,"rating":Decimal("4.9")},
+            {"title":"The Lord of the Rings","author":"J.R.R. Tolkien","genre":"Fantasy","publishedYear":1954,"isbn":"978-0618640157","price":Decimal("24.99"),"stock":300,"rating":Decimal("4.9")},
+            {"title":"Brave New World","author":"Aldous Huxley","genre":"Classic","publishedYear":1932,"isbn":"978-0060850524","price":Decimal("10.99"),"stock":160,"rating":Decimal("4.4")},
+            {"title":"The Lean Startup","author":"Eric Ries","genre":"Technology","publishedYear":2011,"isbn":"978-0307887894","price":Decimal("17.99"),"stock":220,"rating":Decimal("4.5")},
+          ]
+
+          def handler(event, context):
+              table  = dynamodb.Table(os.environ['BOOKS_TABLE'])
+              action = event.get('action', 'seed')
+              TAGS   = ['bestseller','award-winner','classic','recommended','new-arrival']
+              if action == 'clear':
+                  scan = table.scan(ProjectionExpression='bookId')
+                  with table.batch_writer() as b:
+                      for item in scan['Items']:
+                          b.delete_item(Key={'bookId': item['bookId']})
+                  return {'message': f"Cleared {len(scan['Items'])} records"}
+              with table.batch_writer() as b:
+                  for book in BOOKS:
+                      b.put_item(Item={
+                          **book,
+                          'bookId':    str(uuid.uuid4()),
+                          'createdAt': datetime.now(timezone.utc).isoformat(),
+                          'tags':      random.sample(TAGS, k=2)
+                      })
+              return {'message': f'Seeded {len(BOOKS)} books', 'status': 'success'}
+
+  # ── API GATEWAY ───────────────────────────────
+  ResearchApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: coldstart-research-api
+      Description: !Sub "Book Inventory API — Cold Start Research (${AWS::AccountId} / ${AWS::Region})"
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  BooksResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ParentId: !GetAtt ResearchApi.RootResourceId
+      PathPart: books
+
+  BookIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ParentId: !Ref BooksResource
+      PathPart: "{bookId}"
+
+  HealthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ParentId: !GetAtt ResearchApi.RootResourceId
+      PathPart: health
+
+  BooksGET:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ResourceId: !Ref BooksResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookApiNonVpc.Arn}/invocations
+
+  BooksPOST:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ResourceId: !Ref BooksResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookApiNonVpc.Arn}/invocations
+
+  BookGET:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ResourceId: !Ref BookIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookApiNonVpc.Arn}/invocations
+
+  BookPUT:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ResourceId: !Ref BookIdResource
+      HttpMethod: PUT
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookApiNonVpc.Arn}/invocations
+
+  BookDELETE:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ResourceId: !Ref BookIdResource
+      HttpMethod: DELETE
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookApiNonVpc.Arn}/invocations
+
+  HealthGET:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ResearchApi
+      ResourceId: !Ref HealthResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${BookApiNonVpc.Arn}/invocations
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - BooksGET
+      - BooksPOST
+      - BookGET
+      - BookPUT
+      - BookDELETE
+      - HealthGET
+    Properties:
+      RestApiId: !Ref ResearchApi
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref ResearchApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: dev
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          MetricsEnabled: true
+          LoggingLevel: "OFF"
+
+  # ── LAMBDA PERMISSIONS ───────────────────────
+  PermNonVpc:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BookApiNonVpc
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ResearchApi}/*/*
+
+  PermVpc:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BookApiVpc
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ResearchApi}/*/*
+
+  PermProvisioned:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BookApiProvisioned
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ResearchApi}/*/*
+
+  # ── CLOUDWATCH DASHBOARD ─────────────────────
+  ResearchDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: coldstart-research-dashboard
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "metric", "x": 0, "y": 0, "width": 24, "height": 6,
+              "properties": {
+                "title": "Init Duration (Cold Start ms) — All Functions",
+                "metrics": [
+                  ["AWS/Lambda","InitDuration","FunctionName","coldstart-research-api-non-vpc",{"label":"Non-VPC","color":"#2ca02c"}],
+                  ["AWS/Lambda","InitDuration","FunctionName","coldstart-research-api-vpc",{"label":"VPC","color":"#d62728"}],
+                  ["AWS/Lambda","InitDuration","FunctionName","coldstart-research-api-provisioned",{"label":"Provisioned","color":"#1f77b4"}],
+                  ["AWS/Lambda","InitDuration","FunctionName","coldstart-research-api-small-pkg",{"label":"Small Pkg","color":"#ff7f0e"}],
+                  ["AWS/Lambda","InitDuration","FunctionName","coldstart-research-api-large-pkg",{"label":"Large Pkg","color":"#9467bd"}]
+                ],
+                "period": 60, "stat": "Average", "view": "timeSeries", "region": "us-east-1"
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "p95 Tail Latency",
+                "metrics": [
+                  ["AWS/Lambda","Duration","FunctionName","coldstart-research-api-non-vpc",{"stat":"p95","label":"Non-VPC p95"}],
+                  ["AWS/Lambda","Duration","FunctionName","coldstart-research-api-vpc",{"stat":"p95","label":"VPC p95"}],
+                  ["AWS/Lambda","Duration","FunctionName","coldstart-research-api-provisioned",{"stat":"p95","label":"Provisioned p95"}]
+                ],
+                "period": 60, "view": "timeSeries", "region": "us-east-1"
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 6, "width": 12, "height": 6,
+              "properties": {
+                "title": "p99 Tail Latency",
+                "metrics": [
+                  ["AWS/Lambda","Duration","FunctionName","coldstart-research-api-non-vpc",{"stat":"p99","label":"Non-VPC p99"}],
+                  ["AWS/Lambda","Duration","FunctionName","coldstart-research-api-vpc",{"stat":"p99","label":"VPC p99"}],
+                  ["AWS/Lambda","Duration","FunctionName","coldstart-research-api-provisioned",{"stat":"p99","label":"Provisioned p99"}]
+                ],
+                "period": 60, "view": "timeSeries", "region": "us-east-1"
+              }
+            },
+            {
+              "type": "metric", "x": 0, "y": 12, "width": 12, "height": 6,
+              "properties": {
+                "title": "Invocation Count",
+                "metrics": [
+                  ["AWS/Lambda","Invocations","FunctionName","coldstart-research-api-non-vpc"],
+                  ["AWS/Lambda","Invocations","FunctionName","coldstart-research-api-vpc"],
+                  ["AWS/Lambda","Invocations","FunctionName","coldstart-research-api-provisioned"],
+                  ["AWS/Lambda","Invocations","FunctionName","coldstart-research-api-small-pkg"],
+                  ["AWS/Lambda","Invocations","FunctionName","coldstart-research-api-large-pkg"]
+                ],
+                "period": 60, "stat": "Sum", "view": "timeSeries", "region": "us-east-1"
+              }
+            },
+            {
+              "type": "metric", "x": 12, "y": 12, "width": 12, "height": 6,
+              "properties": {
+                "title": "Errors",
+                "metrics": [
+                  ["AWS/Lambda","Errors","FunctionName","coldstart-research-api-non-vpc"],
+                  ["AWS/Lambda","Errors","FunctionName","coldstart-research-api-vpc"],
+                  ["AWS/Lambda","Errors","FunctionName","coldstart-research-api-provisioned"]
+                ],
+                "period": 60, "stat": "Sum", "view": "timeSeries", "region": "us-east-1"
+              }
+            }
+          ]
+        }
+
+# ─────────────────────────────────────────────
+#  OUTPUTS
+# ─────────────────────────────────────────────
+Outputs:
+  ApiUrl:
+    Description: API Gateway base URL
+    Value: !Sub https://${ResearchApi}.execute-api.${AWS::Region}.amazonaws.com/dev
+    Export:
+      Name: !Sub ${ProjectName}-api-url
+
+  NonVpcFunctionArn:
+    Value: !GetAtt BookApiNonVpc.Arn
+    Export:
+      Name: !Sub ${ProjectName}-non-vpc-arn
+
+  VpcFunctionArn:
+    Value: !GetAtt BookApiVpc.Arn
+    Export:
+      Name: !Sub ${ProjectName}-vpc-arn
+
+  ProvisionedFunctionArn:
+    Value: !GetAtt BookApiProvisioned.Arn
+    Export:
+      Name: !Sub ${ProjectName}-provisioned-arn
+
+  DynamicProvisionerArn:
+    Value: !GetAtt DynamicProvisioner.Arn
+    Export:
+      Name: !Sub ${ProjectName}-dynamic-provisioner-arn
+
+  MetricsTableName:
+    Value: !Ref MetricsTable
+    Export:
+      Name: !Sub ${ProjectName}-metrics-table
+
+  DashboardUrl:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/cloudwatch/home?region=${AWS::Region}#dashboards:name=coldstart-research-dashboard

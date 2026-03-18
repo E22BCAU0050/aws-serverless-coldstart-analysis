@@ -1,0 +1,62 @@
+{
+  "test_config": {
+    "api_url": "https://y254zxhdfb.execute-api.us-east-1.amazonaws.com/dev",
+    "duration_minutes": 30,
+    "peak_vus": 40,
+    "start_hour": 8,
+    "timestamp": "2026-03-18T14:15:24.275Z"
+  },
+  "metrics": {
+    "cold_starts_total": 32,
+    "cold_start_rate": 0.0008704877451647126,
+    "cold_start_init_p50": 0,
+    "cold_start_init_p95": 0,
+    "cold_start_init_p99": 0,
+    "latency_non_vpc": {
+      "p50": 0,
+      "p95": 541.7445499999999,
+      "p99": 0,
+      "p999": 0,
+      "avg": 470.70470931560897
+    },
+    "latency_vpc": {
+      "p50": 0,
+      "p95": 537.3665,
+      "p99": 0,
+      "p999": 0,
+      "avg": 466.5087792564617
+    },
+    "latency_provisioned": {
+      "p50": 0,
+      "p95": 515.10405,
+      "p99": 0,
+      "p999": 0,
+      "avg": 448.85566450068615
+    },
+    "latency_small_pkg": {
+      "p50": 0,
+      "p95": 451.57595,
+      "p99": 0,
+      "avg": 433.08124999999995
+    },
+    "latency_large_pkg": {
+      "p50": 0,
+      "p95": 444.81865,
+      "p99": 0,
+      "avg": 432.3275
+    },
+    "tail_p95": 537.974,
+    "tail_p99": 0,
+    "error_rate": 0,
+    "invocations_total": 36761
+  },
+  "thresholds_passed": {
+    "latency_non_vpc_ms": true,
+    "error_rate": true,
+    "latency_vpc_ms": true,
+    "latency_provisioned_ms": false,
+    "http_req_duration": true,
+    "cold_start_rate": true,
+    "http_req_failed": true
+  }
+}
