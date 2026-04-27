@@ -53,7 +53,7 @@ ML_FEATURES    = ['memory_size_mb','vpc_flag','provisioned_flag','container_flag
                   'simulated_traffic_level']
 ML_TARGET      = 'init_duration_ms'
 COLD_MASK_COL  = 'cold_start_flag'
-QUANTILES      = [0.10, 0.50, 0.90]
+QUANTILES      = [0.05, 0.10, 0.50, 0.90, 0.95]
 TRAIN_VARIANTS = ['non-vpc', 'vpc', 'provisioned']
 
 def sine_wave_traffic(hour):
@@ -124,10 +124,10 @@ def train_quantile_regression(X_tr,X_te,y_tr,y_te,scaler):
         pb=pinball_loss(y_te.values,yp,q)
         yp_ms=np.expm1(np.clip(yp,0,None))
         print(f'    q={q:.2f}  pinball_loss={pb:.4f}  pred_range=[{yp_ms.min():.1f}, {yp_ms.max():.1f}]ms')
-        results[f'q{int(q*100)}']={'pinball_loss':pb,'pred_min':float(yp_ms.min()),
+        results[f'q{int(q*100):02d}']={'pinball_loss':pb,'pred_min':float(yp_ms.min()),
             'pred_max':float(yp_ms.max()),'pred_mean':float(yp_ms.mean())}
-        models[f'q{int(q*100)}']=qr
-    y_lo=models['q10'].predict(X_te); y_hi=models['q90'].predict(X_te)
+        models[f'q{int(q*100):02d}']=qr
+    y_lo=models['q05'].predict(X_te); y_hi=models['q95'].predict(X_te)
     cov=float(np.mean((y_te.values>=y_lo)&(y_te.values<=y_hi)))
     print(f'    Coverage (q10-q90 interval): {cov*100:.1f}%  (target: ~80%)')
     results['coverage_q10_q90']=cov
