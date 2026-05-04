@@ -1,0 +1,31 @@
+=== Init Duration Distribution Analysis ===
+Percentiles:
+  p05: 500.8 ms
+  p10: 522.8 ms
+  p25: 548.2 ms
+  p50: 565.3 ms
+  p75: 583.4 ms
+  p90: 615.2 ms
+  p95: 653.6 ms
+  p99: 788.7 ms
+
+GMM Regime 0: n=2258, mean=564.1, std=25.5
+GMM Regime 1: n=301, mean=617.7, std=143.2
+
+=== Feature means by regime ===
+regime                             0             1
+cw_tail_spread            324.405385    249.566085
+cw_p999_p50_ratio           4.499807      3.808408
+package_size_kb            49.750221    118.485050
+dep_count                   3.035430      4.627907
+function_type_enc           0.135075      1.073090
+time_since_last_inv      5933.077537  27395.362507
+simulated_traffic_level     0.392902      0.458286
+day_of_week                 4.471656      4.495017
+hour_of_day                10.279684     10.517226
+
+=== Per-Regime Regressor ===
+Baseline (single model) MAE:25.27  R2:0.2791
+  Regime 0 (n_test=463)  MAE:16.42  R2:0.2979
+  Regime 1 (n_test=49)  MAE:55.64  R2:0.6123
+Per-regime combined  MAE:20.17  RMSE:33.17  R2:0.5468

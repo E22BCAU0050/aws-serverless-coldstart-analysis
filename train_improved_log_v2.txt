@@ -1,0 +1,74 @@
+Loading data...
+Shape: (4228054, 33)
+Cold starts: 2559 / 4228054 (0.061%)
+
+Engineering features...
+Features (28): ['memory_size_mb', 'provisioned_flag', 'container_flag', 'package_size_kb', 'dep_count', 'hour_of_day', 'day_of_week', 'hour_sin', 'hour_cos', 'function_type_enc', 'api_method_enc', 'cw_avg_duration_ms', 'cw_p50_duration_ms', 'cw_p95_duration_ms', 'cw_p99_duration_ms', 'cw_p999_duration_ms', 'cw_avg_init_ms', 'cw_p95_init_ms', 'cw_p99_init_ms', 'cw_total_invocations', 'cw_max_concurrent_execs', 'cw_error_count', 'time_since_last_inv', 'rolling_inv_rate', 'mem_pkg_interaction', 'traffic_phase_enc', 'function_type_target_enc', 'staleness_decay']
+
+Train cold starts: 2047 / 3382443
+Test cold starts:  512 / 845611
+
+── Stage 1: Cold Start Classifier ──
+scale_pos_weight: 1651.4
+[0]	validation_0-aucpr:0.25419
+[50]	validation_0-aucpr:0.28118
+[100]	validation_0-aucpr:0.34558
+[150]	validation_0-aucpr:0.39831
+[200]	validation_0-aucpr:0.40036
+[250]	validation_0-aucpr:0.39470
+[299]	validation_0-aucpr:0.38750
+
+Classifier Report:
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00    845099
+           1       0.18      0.98      0.30       512
+
+    accuracy                           1.00    845611
+   macro avg       0.59      0.99      0.65    845611
+weighted avg       1.00      1.00      1.00    845611
+
+ROC-AUC: 0.9990
+
+── Stage 2: Cold Start Latency Regressor ──
+Cold-only train: 2047, test: 512
+
+Cold-only Regressor:
+  MAE:  29.73 ms
+  RMSE: 48.17 ms
+  R²:   0.1592
+  MAPE: 5.04%
+
+── Optuna Tuning ──
+  0%|          | 0/30 [00:00<?, ?it/s]Best trial: 0. Best value: 26.9545:   0%|          | 0/30 [00:00<?, ?it/s]Best trial: 0. Best value: 26.9545:   3%|▎         | 1/30 [00:00<00:11,  2.62it/s]Best trial: 0. Best value: 26.9545:   3%|▎         | 1/30 [00:02<00:11,  2.62it/s]Best trial: 0. Best value: 26.9545:   7%|▋         | 2/30 [00:02<00:33,  1.19s/it]Best trial: 0. Best value: 26.9545:   7%|▋         | 2/30 [00:02<00:33,  1.19s/it]Best trial: 0. Best value: 26.9545:  10%|█         | 3/30 [00:02<00:27,  1.02s/it]Best trial: 0. Best value: 26.9545:  10%|█         | 3/30 [00:04<00:27,  1.02s/it]Best trial: 0. Best value: 26.9545:  13%|█▎        | 4/30 [00:04<00:27,  1.06s/it]Best trial: 0. Best value: 26.9545:  13%|█▎        | 4/30 [00:04<00:27,  1.06s/it]Best trial: 0. Best value: 26.9545:  17%|█▋        | 5/30 [00:04<00:21,  1.15it/s]Best trial: 0. Best value: 26.9545:  17%|█▋        | 5/30 [00:05<00:21,  1.15it/s]Best trial: 0. Best value: 26.9545:  20%|██        | 6/30 [00:05<00:18,  1.27it/s]Best trial: 0. Best value: 26.9545:  20%|██        | 6/30 [00:06<00:18,  1.27it/s]Best trial: 0. Best value: 26.9545:  23%|██▎       | 7/30 [00:06<00:19,  1.20it/s]Best trial: 0. Best value: 26.9545:  23%|██▎       | 7/30 [00:07<00:19,  1.20it/s]Best trial: 0. Best value: 26.9545:  27%|██▋       | 8/30 [00:07<00:23,  1.05s/it]Best trial: 0. Best value: 26.9545:  27%|██▋       | 8/30 [00:08<00:23,  1.05s/it]Best trial: 0. Best value: 26.9545:  30%|███       | 9/30 [00:08<00:22,  1.06s/it]Best trial: 0. Best value: 26.9545:  30%|███       | 9/30 [00:10<00:22,  1.06s/it]Best trial: 0. Best value: 26.9545:  33%|███▎      | 10/30 [00:10<00:24,  1.23s/it]Best trial: 0. Best value: 26.9545:  33%|███▎      | 10/30 [00:10<00:24,  1.23s/it]Best trial: 0. Best value: 26.9545:  37%|███▋      | 11/30 [00:10<00:17,  1.08it/s]Best trial: 0. Best value: 26.9545:  37%|███▋      | 11/30 [00:10<00:17,  1.08it/s]Best trial: 0. Best value: 26.9545:  40%|████      | 12/30 [00:10<00:13,  1.38it/s]Best trial: 0. Best value: 26.9545:  40%|████      | 12/30 [00:11<00:13,  1.38it/s]Best trial: 0. Best value: 26.9545:  43%|████▎     | 13/30 [00:11<00:10,  1.70it/s]Best trial: 0. Best value: 26.9545:  43%|████▎     | 13/30 [00:11<00:10,  1.70it/s]Best trial: 0. Best value: 26.9545:  47%|████▋     | 14/30 [00:11<00:09,  1.72it/s]Best trial: 0. Best value: 26.9545:  47%|████▋     | 14/30 [00:12<00:09,  1.72it/s]Best trial: 0. Best value: 26.9545:  50%|█████     | 15/30 [00:12<00:10,  1.38it/s]Best trial: 0. Best value: 26.9545:  50%|█████     | 15/30 [00:13<00:10,  1.38it/s]Best trial: 0. Best value: 26.9545:  53%|█████▎    | 16/30 [00:13<00:09,  1.47it/s]Best trial: 0. Best value: 26.9545:  53%|█████▎    | 16/30 [00:14<00:09,  1.47it/s]Best trial: 0. Best value: 26.9545:  57%|█████▋    | 17/30 [00:14<00:10,  1.19it/s]Best trial: 0. Best value: 26.9545:  57%|█████▋    | 17/30 [00:15<00:10,  1.19it/s]Best trial: 0. Best value: 26.9545:  60%|██████    | 18/30 [00:15<00:09,  1.25it/s]Best trial: 0. Best value: 26.9545:  60%|██████    | 18/30 [00:16<00:09,  1.25it/s]Best trial: 0. Best value: 26.9545:  63%|██████▎   | 19/30 [00:16<00:10,  1.09it/s]Best trial: 0. Best value: 26.9545:  63%|██████▎   | 19/30 [00:17<00:10,  1.09it/s]Best trial: 0. Best value: 26.9545:  67%|██████▋   | 20/30 [00:17<00:09,  1.04it/s]Best trial: 0. Best value: 26.9545:  67%|██████▋   | 20/30 [00:18<00:09,  1.04it/s]Best trial: 0. Best value: 26.9545:  70%|███████   | 21/30 [00:18<00:07,  1.19it/s]Best trial: 0. Best value: 26.9545:  70%|███████   | 21/30 [00:18<00:07,  1.19it/s]Best trial: 0. Best value: 26.9545:  73%|███████▎  | 22/30 [00:18<00:05,  1.46it/s]Best trial: 0. Best value: 26.9545:  73%|███████▎  | 22/30 [00:18<00:05,  1.46it/s]Best trial: 0. Best value: 26.9545:  77%|███████▋  | 23/30 [00:18<00:03,  1.76it/s]Best trial: 23. Best value: 26.8272:  77%|███████▋  | 23/30 [00:19<00:03,  1.76it/s]Best trial: 23. Best value: 26.8272:  80%|████████  | 24/30 [00:19<00:03,  1.78it/s]Best trial: 24. Best value: 26.7872:  80%|████████  | 24/30 [00:19<00:03,  1.78it/s]Best trial: 24. Best value: 26.7872:  83%|████████▎ | 25/30 [00:19<00:03,  1.66it/s]Best trial: 24. Best value: 26.7872:  83%|████████▎ | 25/30 [00:20<00:03,  1.66it/s]Best trial: 24. Best value: 26.7872:  87%|████████▋ | 26/30 [00:20<00:02,  1.61it/s]Best trial: 26. Best value: 26.6639:  87%|████████▋ | 26/30 [00:21<00:02,  1.61it/s]Best trial: 26. Best value: 26.6639:  90%|█████████ | 27/30 [00:21<00:01,  1.58it/s]Best trial: 26. Best value: 26.6639:  90%|█████████ | 27/30 [00:22<00:01,  1.58it/s]Best trial: 26. Best value: 26.6639:  93%|█████████▎| 28/30 [00:22<00:01,  1.18it/s]Best trial: 26. Best value: 26.6639:  93%|█████████▎| 28/30 [00:23<00:01,  1.18it/s]Best trial: 26. Best value: 26.6639:  97%|█████████▋| 29/30 [00:23<00:00,  1.13it/s]Best trial: 26. Best value: 26.6639:  97%|█████████▋| 29/30 [00:24<00:00,  1.13it/s]Best trial: 26. Best value: 26.6639: 100%|██████████| 30/30 [00:24<00:00,  1.13it/s]Best trial: 26. Best value: 26.6639: 100%|██████████| 30/30 [00:24<00:00,  1.23it/s]
+
+Best MAE: 26.66 ms
+Best params: {'n_estimators': 280, 'max_depth': 6, 'learning_rate': 0.013240903466260046, 'subsample': 0.7372726209500282, 'min_samples_leaf': 8}
+Tuned R²: 0.2666
+Tuned MAE: 26.66 ms
+
+── Top Feature Importances (Regressor) ──
+time_since_last_inv         0.298444
+hour_of_day                 0.141393
+cw_p999_duration_ms         0.122953
+hour_sin                    0.108891
+hour_cos                    0.102576
+rolling_inv_rate            0.071297
+staleness_decay             0.062920
+cw_p99_duration_ms          0.022018
+function_type_target_enc    0.021028
+function_type_enc           0.017540
+
+Done.
+
+── SMOTE Oversampling + LightGBM ──
+Training until validation scores don't improve for 50 rounds
+[100]	valid_0's l2: 2396.27
+[200]	valid_0's l2: 2283
+[300]	valid_0's l2: 2240.36
+[400]	valid_0's l2: 2235.42
+Early stopping, best iteration is:
+[393]	valid_0's l2: 2234.09
+LightGBM MAE:  28.31 ms
+LightGBM RMSE: 47.27 ms
+LightGBM R²:   0.1904

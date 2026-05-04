@@ -1,0 +1,137 @@
+{
+  "timestamp": "2026-03-18T17:44:52.024822",
+  "n_samples": 147897,
+  "n_cold": 235,
+  "features": [
+    "memory_size_mb",
+    "vpc_flag",
+    "provisioned_flag",
+    "container_flag",
+    "package_size_kb",
+    "dep_count",
+    "hour_of_day",
+    "day_of_week",
+    "hour_sin",
+    "hour_cos",
+    "function_type_enc",
+    "api_method_enc",
+    "cw_avg_duration_ms",
+    "cw_p95_duration_ms",
+    "cw_total_invocations",
+    "simulated_traffic_level"
+  ],
+  "ml": {
+    "quantile_regression": {
+      "q10": {
+        "pinball_loss": 5.04855196017747,
+        "pred_min": 444.7900000000002,
+        "pred_max": 500.0534745353532,
+        "pred_mean": 490.1652088250468
+      },
+      "q50": {
+        "pinball_loss": 13.906603964580501,
+        "pred_min": 483.5599999999985,
+        "pred_max": 548.6107655637743,
+        "pred_mean": 533.8028231943277
+      },
+      "q90": {
+        "pinball_loss": 10.929617021276604,
+        "pred_min": 607.5999999999999,
+        "pred_max": 607.5999999999999,
+        "pred_mean": 607.5999999999997
+      },
+      "coverage_q10_q90": 0.7872340425531915
+    },
+    "xgboost": {
+      "mae": 34.75768888201778,
+      "rmse": 47.86568684081167,
+      "r2": 0.189260991451207,
+      "mape": 6.422003855898437,
+      "shap_feature_importance": {
+        "function_type_enc": 0.039091695100069046,
+        "hour_of_day": 0.027971042320132256,
+        "cw_avg_duration_ms": 0.010322741232812405,
+        "hour_sin": 0.005772357806563377,
+        "hour_cos": 0.005694381892681122,
+        "cw_total_invocations": 0.004452304914593697,
+        "vpc_flag": 0.004443034064024687,
+        "package_size_kb": 0.0042618089355528355
+      }
+    },
+    "gradient_boosting": {
+      "mae": 36.28357550937477,
+      "rmse": 49.33307128943199,
+      "r2": 0.13879054952368375,
+      "mape": 6.69764999627141
+    },
+    "ridge": {
+      "mae": 33.15300945794884,
+      "rmse": 42.95025237113375,
+      "r2": 0.3472243899052202,
+      "mape": 6.136276428846684
+    }
+  },
+  "dl": {
+    "tft": {
+      "mae": 63.05425405381296,
+      "rmse": 93.86991041969053
+    },
+    "next_30min_forecast": [
+      47.17095591768941,
+      72.4810335935428,
+      69.76020024338857,
+      80.28479265718715,
+      87.38127618757483,
+      108.08337099973875
+    ]
+  },
+  "ablation": {
+    "ablation_vpc": {
+      "with_vpc": {
+        "r2": 0.1676449083456779,
+        "mae": 35.4078511209691
+      },
+      "without_vpc": {
+        "r2": 0.16817857045020834,
+        "mae": 35.2487859717836
+      },
+      "delta_r2": -0.0005336621045304302
+    },
+    "ablation_traffic": {
+      "with_traffic": {
+        "r2": 0.1676449083456779,
+        "mae": 35.4078511209691
+      },
+      "without_traffic": {
+        "r2": 0.1676449083456779,
+        "mae": 35.4078511209691
+      },
+      "delta_r2": 0.0
+    },
+    "cross_model_comparison": {
+      "Ridge": {
+        "r2": 0.3349,
+        "mae": 33.39,
+        "rmse": 43.35
+      },
+      "GradBoost": {
+        "r2": 0.2401,
+        "mae": 33.87,
+        "rmse": 46.34
+      },
+      "XGBoost": {
+        "r2": 0.1531,
+        "mae": 35.73,
+        "rmse": 48.92
+      }
+    }
+  },
+  "provisioning": {
+    "aws_avg_p99_ms": 59.85880005411256,
+    "tft_avg_p99_ms": 79.31463068181819,
+    "latency_reduction_pct": -32.5028744480636,
+    "aws_daily_cost": 3.6167999999999996,
+    "tft_daily_cost": 3.5519999999999996,
+    "cost_delta_pct": -1.7916390179163897
+  }
+}

@@ -1,62 +1,62 @@
 {
   "test_config": {
-    "api_url": "https://y254zxhdfb.execute-api.us-east-1.amazonaws.com/dev",
+    "api_url": "https://o6z854ugy4.execute-api.us-east-1.amazonaws.com/dev",
     "duration_minutes": 30,
-    "peak_vus": 40,
+    "peak_vus": 30,
     "start_hour": 8,
-    "timestamp": "2026-03-18T14:15:24.275Z"
+    "timestamp": "2026-05-02T11:18:30.828Z"
   },
   "metrics": {
-    "cold_starts_total": 32,
-    "cold_start_rate": 0.0008704877451647126,
+    "cold_starts_total": 14,
+    "cold_start_rate": 0.000655860582778975,
     "cold_start_init_p50": 0,
     "cold_start_init_p95": 0,
     "cold_start_init_p99": 0,
     "latency_non_vpc": {
       "p50": 0,
-      "p95": 541.7445499999999,
+      "p95": 1850.2219999999988,
       "p99": 0,
       "p999": 0,
-      "avg": 470.70470931560897
+      "avg": 745.8881224909466
     },
     "latency_vpc": {
       "p50": 0,
-      "p95": 537.3665,
+      "p95": 1529.0571499999999,
       "p99": 0,
       "p999": 0,
-      "avg": 466.5087792564617
+      "avg": 666.361985290148
     },
     "latency_provisioned": {
       "p50": 0,
-      "p95": 515.10405,
+      "p95": 1203.6309999999996,
       "p99": 0,
       "p999": 0,
-      "avg": 448.85566450068615
+      "avg": 488.69695075349784
     },
     "latency_small_pkg": {
       "p50": 0,
-      "p95": 451.57595,
+      "p95": 316.21065,
       "p99": 0,
-      "avg": 433.08124999999995
+      "avg": 313.3405
     },
     "latency_large_pkg": {
       "p50": 0,
-      "p95": 444.81865,
+      "p95": 331.30539999999996,
       "p99": 0,
-      "avg": 432.3275
+      "avg": 312.25533333333334
     },
-    "tail_p95": 537.974,
+    "tail_p95": 1623.72175,
     "tail_p99": 0,
     "error_rate": 0,
-    "invocations_total": 36761
+    "invocations_total": 21346
   },
   "thresholds_passed": {
-    "latency_non_vpc_ms": true,
     "error_rate": true,
-    "latency_vpc_ms": true,
     "latency_provisioned_ms": false,
-    "http_req_duration": true,
+    "latency_vpc_ms": true,
     "cold_start_rate": true,
-    "http_req_failed": true
+    "http_req_failed": true,
+    "latency_non_vpc_ms": true,
+    "http_req_duration": true
   }
 }

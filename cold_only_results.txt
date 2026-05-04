@@ -1,0 +1,35 @@
+Cold-only dataset: 2559 rows, 28 features
+Target std: 57.26, mean: 570.38
+
+── Results on Cold-Start-Only Subset ──
+GradBoost        MAE: 25.27  RMSE: 41.84  R2:0.2791
+XGBoost          MAE: 25.33  RMSE: 42.07  R2:0.2710
+RandomForest     MAE: 25.88  RMSE: 42.54  R2:0.2549
+
+── Feature Importances (GradBoost) ──
+cw_p999_p50_ratio           0.135345
+hour_sin                    0.131428
+time_since_last_inv         0.119777
+hour_of_day                 0.110464
+cw_tail_spread              0.093527
+hour_cos                    0.084902
+simulated_traffic_level     0.075490
+staleness_decay             0.057858
+rolling_inv_rate            0.043122
+function_type_target_enc    0.031805
+function_type_enc           0.031023
+cw_total_invocations        0.017501
+
+── Feature Importances (XGBoost) ──
+cw_tail_spread              0.231481
+cw_p999_p50_ratio           0.203533
+function_type_enc           0.053086
+function_type_target_enc    0.049005
+traffic_phase_enc           0.043410
+cw_p99_duration_ms          0.042022
+cw_p95_duration_ms          0.039614
+hour_of_day                 0.038902
+hour_sin                    0.033989
+cw_p999_duration_ms         0.028264
+simulated_traffic_level     0.025319
+staleness_decay             0.025114

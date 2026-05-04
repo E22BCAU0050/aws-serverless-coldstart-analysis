@@ -1,0 +1,54 @@
+=== Loading and Engineering Features ===
+Cold-only: 2559 total, 2047 train, 512 test
+Regime 0 train/test: 1806/452
+Regime 1 train/test: 241/60
+
+=== Baseline Models (no regime split) ===
+  Ridge           MAE: 27.99  RMSE: 50.15  R2:0.2415  MAPE:4.67%
+  GradBoost       MAE: 25.95  RMSE: 47.18  R2:0.3286  MAPE:4.33%
+  XGBoost         MAE: 26.00  RMSE: 47.31  R2:0.3251  MAPE:4.33%
+  RandomForest    MAE: 25.85  RMSE: 47.19  R2:0.3284  MAPE:4.31%
+
+=== Regime-Aware Two-Stage Models ===
+  GradBoost+Regime          MAE: 21.31  RMSE: 37.71  R2:0.5712  MAPE:3.67%
+  XGBoost+Regime            MAE: 21.20  RMSE: 39.30  R2:0.5343  MAPE:3.66%
+  RandomForest+Regime       MAE: 20.76  RMSE: 37.74  R2:0.5705  MAPE:3.56%
+
+=== Per-Regime Breakdown (GradBoost+Regime) ===
+  Regime 0 (n=452)  MAE:15.41  R2:0.3400  mean_init:565.6ms
+  Regime 1 (n=60)  MAE:65.76  R2:0.5766  mean_init:616.5ms
+
+=== Top Feature Importances (GradBoost, Regime 0) ===
+cw_p95_duration_ms         0.242496
+time_since_last_inv        0.135709
+hour_of_day                0.082857
+hour_cos                   0.079927
+hour_sin                   0.068862
+cw_avg_duration_ms         0.067509
+rolling_inv_rate           0.056892
+simulated_traffic_level    0.047510
+cw_p999_duration_ms        0.041854
+cw_p50_duration_ms         0.036420
+
+=== Top Feature Importances (GradBoost, Regime 1) ===
+cw_p999_p50_ratio          0.208893
+cw_tail_spread             0.175774
+time_since_last_inv        0.161182
+rolling_inv_rate           0.085864
+staleness_decay            0.063421
+hour_sin                   0.062292
+hour_cos                   0.052235
+simulated_traffic_level    0.040261
+hour_of_day                0.036952
+cw_total_invocations       0.021517
+
+=== PAPER TABLE: Model Comparison ===
+Model                          MAE     RMSE       R2     MAPE
+------------------------------------------------------------
+Ridge                        27.99    50.15   0.2415    4.67%
+GradBoost                    25.95    47.18   0.3286    4.33%
+XGBoost                      26.00    47.31   0.3251    4.33%
+RandomForest                 25.85    47.19   0.3284    4.31%
+GradBoost+Regime             21.31    37.71   0.5712    3.67%
+XGBoost+Regime               21.20    39.30   0.5343    3.66%
+RandomForest+Regime          20.76    37.74   0.5705    3.56%
